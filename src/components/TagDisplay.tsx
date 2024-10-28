@@ -1,12 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Copy, Weight, Hash, Check } from 'lucide-react';
 import { Tag } from '../types';
-import {
-  DragDropContext,
-  Droppable,
-  Draggable,
-  DropResult,
-} from 'react-beautiful-dnd';
 
 interface TagDisplayProps {
   selectedTags: Tag[];
@@ -49,6 +43,7 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
   const weightChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const matchedTagsRef = useRef<HTMLDivElement>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   useEffect(() => {
     setInputValues(
@@ -266,95 +261,98 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
     [selectedTags]
   );
 
-  const onDragEnd = (result: DropResult) => {
-    if (!result.destination) {
-      return;
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.dataTransfer.setData('text/plain', index.toString());
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>, dropIndex: number) => {
+    e.preventDefault();
+    const dragIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    if (dragIndex !== dropIndex) {
+      const newTags = [...selectedTags];
+      const [removed] = newTags.splice(dragIndex, 1);
+      newTags.splice(dropIndex, 0, removed);
+      onReorderTags(newTags);
     }
-
-    const newTags = Array.from(selectedTags);
-    const [reorderedTag] = newTags.splice(result.source.index, 1);
-    newTags.splice(result.destination.index, 0, reorderedTag);
-
-    onReorderTags(newTags);
+    setDragOverIndex(null);
   };
 
   return (
     <div className="bg-white rounded-lg shadow-md p-4 relative">
-      <DragDropContext onDragEnd={onDragEnd}>
-        <Droppable droppableId="tagList" direction="horizontal">
-          {(provided) => (
+      <div className="flex flex-wrap gap-2 mb-3">
+        {selectedTags.map((tag, index) => (
+          <React.Fragment key={tag.id}>
+            {index === dragOverIndex && (
+              <div className="w-1 h-6 bg-blue-500 rounded-full transition-all duration-200 ease-in-out" />
+            )}
             <div
-              {...provided.droppableProps}
-              ref={provided.innerRef}
-              className="flex flex-wrap gap-2 mb-3 min-h-[50px]"
+              draggable
+              onDragStart={(e) => handleDragStart(e, index)}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, index)}
+              onMouseDown={(e) => weightedMode && handleTagMouseDown(e, tag.id)}
+              onContextMenu={(e) => e.preventDefault()}
+              className={`px-2 py-1 rounded-full text-sm flex items-center transition-colors duration-200 select-none ${
+                getWeightColor(tagWeights[tag.id] || 0)
+              } ${weightedMode ? 'cursor-pointer' : 'cursor-grab'} hover:cursor-grab active:cursor-grabbing`}
             >
-              {selectedTags.map((tag, index) => (
-                <Draggable key={tag.id} draggableId={tag.id} index={index}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      {...provided.dragHandleProps}
-                      className={`px-2 py-1 rounded-full text-sm flex items-center transition-colors duration-200 select-none ${getWeightColor(
-                        tagWeights[tag.id] || 0
-                      )} ${weightedMode ? 'cursor-pointer' : ''} ${
-                        snapshot.isDragging ? 'shadow-lg' : ''
-                      }`}
-                      onMouseDown={(e) =>
-                        weightedMode && handleTagMouseDown(e, tag.id)
+              <span>
+                {'{'.repeat(tagWeights[tag.id] || 0)}
+                {tag.name}
+                {'}'.repeat(tagWeights[tag.id] || 0)} ({tag.translation})
+              </span>
+              <div className="flex items-center ml-1">
+                {weightedMode &&
+                  (editingTagId === tag.id ? (
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={inputValues[tag.id] || '0'}
+                      onChange={(e) =>
+                        handleWeightInputChange(e, tag.id)
                       }
-                      onContextMenu={(e) => e.preventDefault()}
+                      onBlur={() => handleWeightInputBlur(tag.id)}
+                      onKeyDown={(e) =>
+                        handleWeightInputKeyDown(e, tag.id)
+                      }
+                      className="w-12 h-6 text-xs text-center border rounded"
+                      autoFocus
+                    />
+                  ) : (
+                    <button
+                      onClick={(e) =>
+                        handleDirectWeightInput(e, tag.id)
+                      }
+                      className="p-1 text-gray-500 hover:text-gray-700 focus:outline-none"
                     >
-                      <span>
-                        {'{'.repeat(tagWeights[tag.id] || 0)}
-                        {tag.name}
-                        {'}'.repeat(tagWeights[tag.id] || 0)} ({tag.translation}
-                        )
-                      </span>
-                      <div className="flex items-center ml-1">
-                        {weightedMode &&
-                          (editingTagId === tag.id ? (
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              value={inputValues[tag.id] || '0'}
-                              onChange={(e) =>
-                                handleWeightInputChange(e, tag.id)
-                              }
-                              onBlur={() => handleWeightInputBlur(tag.id)}
-                              onKeyDown={(e) =>
-                                handleWeightInputKeyDown(e, tag.id)
-                              }
-                              className="w-12 h-6 text-xs text-center border rounded"
-                              autoFocus
-                            />
-                          ) : (
-                            <button
-                              onClick={(e) =>
-                                handleDirectWeightInput(e, tag.id)
-                              }
-                              className="p-1 text-gray-500 hover:text-gray-700 focus:outline-none"
-                            >
-                              <Hash size={18} />
-                            </button>
-                          ))}
-                        <button
-                          onClick={() => onRemove(tag)}
-                          className="p-1 ml-1 text-gray-500 hover:text-gray-700 focus:outline-none"
-                        >
-                          <X size={18} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </Draggable>
-              ))}
-              {provided.placeholder}
+                      <Hash size={18} />
+                    </button>
+                  ))}
+                <button
+                  onClick={() => onRemove(tag)}
+                  className="p-1 ml-1 text-gray-500 hover:text-gray-700 focus:outline-none"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
-          )}
-        </Droppable>
-      </DragDropContext>
+          </React.Fragment>
+        ))}
+        {dragOverIndex === selectedTags.length && (
+          <div className="w-1 h-6 bg-blue-500 rounded-full transition-all duration-200 ease-in-out" />
+        )}
+      </div>
 
       <div className="flex flex-col mb-3">
         <div className="flex items-center">

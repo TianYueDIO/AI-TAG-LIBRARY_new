@@ -1,90 +1,60 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import Fuse from 'fuse.js';
-import { Tag, TagFormData, Category } from './types';
+import { Tag, TagFormData } from './types';
 import TagForm from './components/TagForm';
 import TagList from './components/TagList';
 import CategoryView from './components/CategoryView';
 import TagDisplay from './components/TagDisplay';
 import { Plus } from 'lucide-react';
+import { useTagLibrary } from './hooks/useTagLibrary';
+import { defaultTags, defaultCategories } from './constants/defaultData';
 
 const App: React.FC = () => {
-  const [tags, setTags] = useState<Tag[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const {
+    tags,
+    categories,
+    selectedTags,
+    tagWeights,
+    isLoading,
+    saveTag,
+    updateTag,
+    deleteTag,
+    updateCategories,
+    updateSelectedTags,
+    updateTagWeights,
+  } = useTagLibrary(defaultTags, defaultCategories);
+
   const [selectedMainCategory, setSelectedMainCategory] = useState<string>('all');
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>('all');
   const [showForm, setShowForm] = useState(false);
   const [editingTag, setEditingTag] = useState<Tag | null>(null);
-  const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [manualInput, setManualInput] = useState<string>('');
   const [weightedMode, setWeightedMode] = useState(false);
-  const [tagWeights, setTagWeights] = useState<Record<string, number>>({});
   const [matchedTags, setMatchedTags] = useState<Tag[]>([]);
 
-  useEffect(() => {
-    // Simulated data fetching (replace with actual API calls in a real application)
-    const mockCategories: Category[] = [
-      { main: '技术', sub: ['计算机科学', '人工智能', '网络安全', '数据科学', '软件工程'] },
-      { main: '艺术', sub: ['绘画', '音乐', '雕塑', '摄影', '设计'] },
-      { main: '科学', sub: ['物理', '化学', '生物', '天文', '地质'] },
-      { main: '文学', sub: ['小说', '诗歌', '散文', '戏剧', '评论'] },
-    ];
-    setCategories(mockCategories);
-
-    const mockTags: Tag[] = [
-      { id: '1', name: 'artificial intelligence', translation: '人工智能', mainCategory: '技术', subCategory: '人工智能' },
-      { id: '2', name: 'machine learning', translation: '机器学习', mainCategory: '技术', subCategory: '人工智能' },
-      { id: '3', name: 'deep learning', translation: '深度学习', mainCategory: '技术', subCategory: '人工智能' },
-      { id: '4', name: 'neural networks', translation: '神经网络', mainCategory: '技术', subCategory: '人工智能' },
-      { id: '5', name: 'computer vision', translation: '计算机视觉', mainCategory: '技术', subCategory: '计算机科学' },
-      { id: '6', name: 'natural language processing', translation: '自然语言处理', mainCategory: '技术', subCategory: '人工智能' },
-      { id: '7', name: 'data mining', translation: '数据挖掘', mainCategory: '技术', subCategory: '数据科学' },
-      { id: '8', name: 'big data', translation: '大数据', mainCategory: '技术', subCategory: '数据科学' },
-      { id: '9', name: 'cloud computing', translation: '云计算', mainCategory: '技术', subCategory: '计算机科学' },
-      { id: '10', name: 'internet of things', translation: '物联网', mainCategory: '技术', subCategory: '网络安全' },
-      { id: '11', name: 'blockchain', translation: '区块链', mainCategory: '技术', subCategory: '网络安全' },
-      { id: '12', name: 'cybersecurity', translation: '网络安全', mainCategory: '技术', subCategory: '网络安全' },
-      { id: '13', name: 'quantum computing', translation: '量子计算', mainCategory: '科学', subCategory: '物理' },
-      { id: '14', name: 'robotics', translation: '机器人技术', mainCategory: '技术', subCategory: '软件工程' },
-      { id: '15', name: 'virtual reality', translation: '虚拟现实', mainCategory: '技术', subCategory: '计算机科学' },
-      { id: '16', name: 'augmented reality', translation: '增强现实', mainCategory: '技术', subCategory: '计算机科学' },
-      { id: '17', name: '3D printing', translation: '3D打印', mainCategory: '技术', subCategory: '软件工程' },
-      { id: '18', name: 'nanotechnology', translation: '纳米技术', mainCategory: '科学', subCategory: '物理' },
-      { id: '19', name: 'biotechnology', translation: '生物技术', mainCategory: '科学', subCategory: '生物' },
-      { id: '20', name: 'renewable energy', translation: '可再生能源', mainCategory: '科学', subCategory: '物理' },
-    ];
-    setTags(mockTags);
-  }, []);
-
   const handleAddCategory = (mainCategory: string, subCategory?: string) => {
-    setCategories(prevCategories => {
-      let updatedCategories = [...prevCategories];
-      const existingMainCategoryIndex = updatedCategories.findIndex(cat => cat.main === mainCategory);
+    const updatedCategories = [...categories];
+    const existingMainCategoryIndex = updatedCategories.findIndex(cat => cat.main === mainCategory);
 
-      if (existingMainCategoryIndex === -1) {
-        // If main category doesn't exist, add new main category
-        updatedCategories.push({ main: mainCategory, sub: subCategory ? [subCategory] : [] });
-      } else if (subCategory) {
-        // If main category exists and there's a subcategory, add subcategory (if it doesn't already exist)
-        if (!updatedCategories[existingMainCategoryIndex].sub.includes(subCategory)) {
-          updatedCategories[existingMainCategoryIndex].sub.push(subCategory);
-        }
+    if (existingMainCategoryIndex === -1) {
+      updatedCategories.push({ main: mainCategory, sub: subCategory ? [subCategory] : [] });
+    } else if (subCategory) {
+      if (!updatedCategories[existingMainCategoryIndex].sub.includes(subCategory)) {
+        updatedCategories[existingMainCategoryIndex].sub.push(subCategory);
       }
+    }
 
-      return updatedCategories;
-    });
+    updateCategories(updatedCategories);
   };
 
-  const handleSubmit = (data: TagFormData) => {
+  const handleSubmit = async (data: TagFormData) => {
     if (editingTag) {
-      setTags(prevTags => prevTags.map(tag => tag.id === editingTag.id ? { ...tag, ...data } : tag));
+      await updateTag({ ...editingTag, ...data });
     } else {
-      const newTag: Tag = { ...data, id: Date.now().toString() };
-      setTags(prevTags => [...prevTags, newTag]);
+      await saveTag({ ...data, id: Date.now().toString() });
     }
     
-    // Check and add new main category and subcategory
     handleAddCategory(data.mainCategory, data.subCategory);
-    
     setShowForm(false);
     setEditingTag(null);
   };
@@ -106,8 +76,8 @@ const App: React.FC = () => {
 
   const handleSelectMatchedTag = (tag: Tag) => {
     if (!selectedTags.some(t => t.id === tag.id)) {
-      setSelectedTags(prev => [...prev, tag]);
-      setTagWeights(prev => ({ ...prev, [tag.id]: 0 }));
+      updateSelectedTags([...selectedTags, tag]);
+      updateTagWeights({ ...tagWeights, [tag.id]: 0 });
     }
     setManualInput('');
     setMatchedTags([]);
@@ -122,24 +92,20 @@ const App: React.FC = () => {
         mainCategory: '',
         subCategory: ''
       };
-      setSelectedTags(prev => [...prev, newTag]);
-      setTagWeights(prev => ({ ...prev, [newTag.id]: 0 }));
+      updateSelectedTags([...selectedTags, newTag]);
+      updateTagWeights({ ...tagWeights, [newTag.id]: 0 });
       setManualInput('');
       setMatchedTags([]);
     }
   };
 
-  const handleCopyTags = useCallback(() => {
+  const handleCopyTags = () => {
     const tagString = selectedTags.map(tag => {
       const weight = tagWeights[tag.id] || 0;
       return '{'.repeat(weight) + tag.name + '}'.repeat(weight);
     }).join(', ');
-    navigator.clipboard.writeText(tagString).then(() => {
-      console.log('标签已复制到剪贴板！');
-    }, (err) => {
-      console.error('无法复制文本: ', err);
-    });
-  }, [selectedTags, tagWeights]);
+    navigator.clipboard.writeText(tagString);
+  };
 
   const handleSelectMainCategory = (category: string) => {
     setSelectedMainCategory(category);
@@ -151,17 +117,18 @@ const App: React.FC = () => {
   };
 
   const handleDeleteCategory = (mainCategory: string, subCategory?: string) => {
+    const updatedCategories = [...categories];
     if (subCategory) {
-      setCategories(categories.map(cat => 
-        cat.main === mainCategory
-          ? { ...cat, sub: cat.sub.filter(sub => sub !== subCategory) }
-          : cat
-      ));
-      setTags(tags.filter(tag => !(tag.mainCategory === mainCategory && tag.subCategory === subCategory)));
+      const mainCategoryIndex = updatedCategories.findIndex(cat => cat.main === mainCategory);
+      if (mainCategoryIndex !== -1) {
+        updatedCategories[mainCategoryIndex].sub = updatedCategories[mainCategoryIndex].sub
+          .filter(sub => sub !== subCategory);
+        updateCategories(updatedCategories);
+      }
     } else {
-      setCategories(categories.filter(cat => cat.main !== mainCategory));
-      setTags(tags.filter(tag => tag.mainCategory !== mainCategory));
+      updateCategories(updatedCategories.filter(cat => cat.main !== mainCategory));
     }
+
     if (selectedMainCategory === mainCategory) {
       setSelectedMainCategory('all');
       setSelectedSubCategory('all');
@@ -171,30 +138,25 @@ const App: React.FC = () => {
   };
 
   const handleUpdateCategory = (oldName: string, newName: string, isMainCategory: boolean) => {
+    const updatedCategories = [...categories];
     if (isMainCategory) {
-      setCategories(categories.map(cat =>
-        cat.main === oldName ? { ...cat, main: newName } : cat
-      ));
-      setTags(tags.map(tag =>
-        tag.mainCategory === oldName ? { ...tag, mainCategory: newName } : tag
-      ));
-      if (selectedMainCategory === oldName) {
-        setSelectedMainCategory(newName);
+      const index = updatedCategories.findIndex(cat => cat.main === oldName);
+      if (index !== -1) {
+        updatedCategories[index].main = newName;
       }
     } else {
-      setCategories(categories.map(cat =>
-        cat.main === selectedMainCategory
-          ? { ...cat, sub: cat.sub.map(sub => sub === oldName ? newName : sub) }
-          : cat
-      ));
-      setTags(tags.map(tag =>
-        tag.mainCategory === selectedMainCategory && tag.subCategory === oldName
-          ? { ...tag, subCategory: newName }
-          : tag
-      ));
-      if (selectedSubCategory === oldName) {
-        setSelectedSubCategory(newName);
+      const mainCategoryIndex = updatedCategories.findIndex(cat => cat.main === selectedMainCategory);
+      if (mainCategoryIndex !== -1) {
+        updatedCategories[mainCategoryIndex].sub = updatedCategories[mainCategoryIndex].sub
+          .map(sub => sub === oldName ? newName : sub);
       }
+    }
+    updateCategories(updatedCategories);
+
+    if (isMainCategory && selectedMainCategory === oldName) {
+      setSelectedMainCategory(newName);
+    } else if (!isMainCategory && selectedSubCategory === oldName) {
+      setSelectedSubCategory(newName);
     }
   };
 
@@ -203,21 +165,8 @@ const App: React.FC = () => {
     setShowForm(true);
   };
 
-  const handleDelete = (id: string) => {
-    setTags(tags.filter(tag => tag.id !== id));
-  };
-
-  const handleTagSelect = (tag: Tag) => {
-    if (!selectedTags.some(t => t.id === tag.id)) {
-      setSelectedTags(prevTags => [...prevTags, tag]);
-      // Reset the weight when adding a new tag
-      setTagWeights(prev => ({ ...prev, [tag.id]: 0 }));
-    }
-  };
-
   const handleReorderTags = (newOrder: Tag[]) => {
-    console.log('Tags reordered:', newOrder);
-    setSelectedTags(newOrder);
+    updateSelectedTags(newOrder);
   };
 
   const filteredTags = tags.filter(tag => 
@@ -225,20 +174,28 @@ const App: React.FC = () => {
     (selectedSubCategory === 'all' || tag.subCategory === selectedSubCategory)
   );
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-8">AI标签库</h1>
       
       <div className="space-y-8">
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-4">已选标签</h2><TagDisplay
+          <h2 className="text-xl font-semibold mb-4">已选标签</h2>
+          <TagDisplay
             selectedTags={selectedTags}
             onRemove={(tag) => {
-              setSelectedTags(selectedTags.filter(t => t.id !== tag.id));
-              setTagWeights(prev => {
-                const { [tag.id]: removed, ...rest } = prev;
-                return rest;
-              });
+              updateSelectedTags(selectedTags.filter(t => t.id !== tag.id));
+              const newWeights = { ...tagWeights };
+              delete newWeights[tag.id];
+              updateTagWeights(newWeights);
             }}
             manualInput={manualInput}
             onManualInputChange={handleManualInputChange}
@@ -247,7 +204,7 @@ const App: React.FC = () => {
             weightedMode={weightedMode}
             setWeightedMode={setWeightedMode}
             tagWeights={tagWeights}
-            setTagWeights={setTagWeights}
+            setTagWeights={updateTagWeights}
             matchedTags={matchedTags}
             onSelectMatchedTag={handleSelectMatchedTag}
             onReorderTags={handleReorderTags}
@@ -282,8 +239,13 @@ const App: React.FC = () => {
               <TagList
                 tags={filteredTags}
                 onEdit={handleEdit}
-                onDelete={handleDelete}
-                onSelect={handleTagSelect}
+                onDelete={deleteTag}
+                onSelect={(tag) => {
+                  if (!selectedTags.some(t => t.id === tag.id)) {
+                    updateSelectedTags([...selectedTags, tag]);
+                    updateTagWeights({ ...tagWeights, [tag.id]: 0 });
+                  }
+                }}
               />
             </div>
           </div>

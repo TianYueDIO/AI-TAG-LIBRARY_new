@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Copy, Weight, Hash, Check } from 'lucide-react';
+import { X, Copy, Weight, Hash, Check, Trash2 } from 'lucide-react';
 import { Tag } from '../types';
 
 interface TagDisplayProps {
@@ -16,6 +16,7 @@ interface TagDisplayProps {
   matchedTags: Tag[];
   onSelectMatchedTag: (tag: Tag) => void;
   onReorderTags: (newOrder: Tag[]) => void;
+  onClearAllTags: () => void;
 }
 
 const TagDisplay: React.FC<TagDisplayProps> = ({
@@ -32,17 +33,19 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
   matchedTags,
   onSelectMatchedTag,
   onReorderTags,
+  onClearAllTags,
 }) => {
   const [editingTagId, setEditingTagId] = useState<string | null>(null);
   const [showCopyMessage, setShowCopyMessage] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
-  const [selectedMatchedTagIndex, setSelectedMatchedTagIndex] =
-    useState<number>(-1);
+  const [selectedMatchedTagIndex, setSelectedMatchedTagIndex] = useState<number>(-1);
   const [showMatchedTags, setShowMatchedTags] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const weightChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const matchedTagsRef = useRef<HTMLDivElement>(null);
+  const clearButtonRef = useRef<HTMLButtonElement>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   useEffect(() => {
@@ -69,6 +72,7 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
         !matchedTagsRef.current.contains(event.target as Node)
       ) {
         setShowMatchedTags(false);
+        setSelectedMatchedTagIndex(-1);
       }
     };
 
@@ -226,13 +230,13 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
         setSelectedMatchedTagIndex(
           (prev) => (prev - 1 + matchedTags.length) % matchedTags.length
         );
-      } else if (e.key === 'Enter') {
+      } else if (e.key === 'Enter' && selectedMatchedTagIndex !== -1) {
         e.preventDefault();
-        if (selectedMatchedTagIndex !== -1) {
-          onSelectMatchedTag(matchedTags[selectedMatchedTagIndex]);
-          setShowMatchedTags(false);
-          setSelectedMatchedTagIndex(-1);
-        }
+        e.stopPropagation();
+        onSelectMatchedTag(matchedTags[selectedMatchedTagIndex]);
+        setShowMatchedTags(false);
+        setSelectedMatchedTagIndex(-1);
+        return;
       } else if (e.key === 'Escape') {
         setShowMatchedTags(false);
         setSelectedMatchedTagIndex(-1);
@@ -288,6 +292,46 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
 
   return (
     <div className="bg-white rounded-lg shadow-md p-4 relative">
+      <div className="flex justify-between items-center mb-3">
+        <h2 className="text-xl font-semibold">已选标签</h2>
+        {selectedTags.length > 0 && (
+          <div className="relative">
+            <button
+              ref={clearButtonRef}
+              onClick={() => setShowClearConfirm(true)}
+              onMouseLeave={() => setShowClearConfirm(false)}
+              className="px-3 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors duration-200 flex items-center gap-1"
+              title="清空所有标签"
+            >
+              <Trash2 size={16} />
+              清空
+            </button>
+            {showClearConfirm && (
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg p-3 z-50">
+                <p className="text-sm text-gray-600 mb-2">确定要删除所有已选标签吗？</p>
+                <div className="flex justify-end space-x-2">
+                  <button
+                    onClick={() => setShowClearConfirm(false)}
+                    className="px-2 py-1 text-sm text-gray-600 hover:text-gray-800"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={() => {
+                      onClearAllTags();
+                      setShowClearConfirm(false);
+                    }}
+                    className="px-2 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
+                  >
+                    确定
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-2 mb-3">
         {selectedTags.map((tag, index) => (
           <React.Fragment key={tag.id}>

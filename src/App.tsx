@@ -165,8 +165,9 @@ const App: React.FC = () => {
     setShowForm(true);
   };
 
-  const handleReorderTags = (newOrder: Tag[]) => {
-    updateSelectedTags(newOrder);
+  const handleClearAllTags = () => {
+    updateSelectedTags([]);
+    updateTagWeights({});
   };
 
   const filteredTags = tags.filter(tag => 
@@ -207,7 +208,8 @@ const App: React.FC = () => {
             setTagWeights={updateTagWeights}
             matchedTags={matchedTags}
             onSelectMatchedTag={handleSelectMatchedTag}
-            onReorderTags={handleReorderTags}
+            onReorderTags={updateSelectedTags}
+            onClearAllTags={handleClearAllTags}
           />
         </div>
 

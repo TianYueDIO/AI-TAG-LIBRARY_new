@@ -41,12 +41,15 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [selectedMatchedTagIndex, setSelectedMatchedTagIndex] = useState<number>(-1);
   const [showMatchedTags, setShowMatchedTags] = useState(false);
+  const [draggedTagIndex, setDraggedTagIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const weightChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const matchedTagsRef = useRef<HTMLDivElement>(null);
   const clearButtonRef = useRef<HTMLButtonElement>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const clearConfirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setInputValues(
@@ -74,11 +77,31 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
         setShowMatchedTags(false);
         setSelectedMatchedTagIndex(-1);
       }
+
+      // Only hide clear confirm if click is outside both the button and confirm dialog
+      const clearButton = clearButtonRef.current;
+      const clearConfirm = document.getElementById('clear-confirm-dialog');
+      if (
+        clearButton &&
+        clearConfirm &&
+        !clearButton.contains(event.target as Node) &&
+        !clearConfirm.contains(event.target as Node)
+      ) {
+        if (clearConfirmTimeoutRef.current) {
+          clearTimeout(clearConfirmTimeoutRef.current);
+        }
+        clearConfirmTimeoutRef.current = setTimeout(() => {
+          setShowClearConfirm(false);
+        }, 300); // Small delay to prevent accidental hiding
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      if (clearConfirmTimeoutRef.current) {
+        clearTimeout(clearConfirmTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -267,27 +290,74 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, index: number) => {
     e.dataTransfer.setData('text/plain', index.toString());
+    setDraggedTagIndex(index);
+    e.currentTarget.classList.add('opacity-50');
+  };
+
+  const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+    e.currentTarget.classList.remove('opacity-50');
+    setDraggedTagIndex(null);
+    setDragOverIndex(null);
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>, index: number) => {
     e.preventDefault();
-    setDragOverIndex(index);
+    if (draggedTagIndex === null) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const isAfter = x > rect.width / 2;
+    
+    setDragOverIndex(isAfter ? index + 1 : index);
   };
 
-  const handleDragLeave = () => {
-    setDragOverIndex(null);
+  const handleDropZoneDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (draggedTagIndex === null) return;
+    setDragOverIndex(selectedTags.length);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    // Don't reset dragOverIndex here to maintain the preview
+    // Only reset if leaving the entire tags container
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setDragOverIndex(null);
+    }
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>, dropIndex: number) => {
     e.preventDefault();
     const dragIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
-    if (dragIndex !== dropIndex) {
+    
+    if (dragIndex !== dropIndex && draggedTagIndex !== null) {
       const newTags = [...selectedTags];
       const [removed] = newTags.splice(dragIndex, 1);
-      newTags.splice(dropIndex, 0, removed);
+      
+      // Adjust the insertion index if dropping after the drag source
+      const adjustedDropIndex = dropIndex > dragIndex ? dropIndex - 1 : dropIndex;
+      newTags.splice(adjustedDropIndex, 0, removed);
+      
       onReorderTags(newTags);
     }
+    
+    setDraggedTagIndex(null);
     setDragOverIndex(null);
+  };
+
+  const handleClearButtonClick = () => {
+    setShowClearConfirm(true);
+    if (clearConfirmTimeoutRef.current) {
+      clearTimeout(clearConfirmTimeoutRef.current);
+      clearConfirmTimeoutRef.current = null;
+    }
+  };
+
+  const handleClearButtonMouseEnter = () => {
+    if (clearConfirmTimeoutRef.current) {
+      clearTimeout(clearConfirmTimeoutRef.current);
+      clearConfirmTimeoutRef.current = null;
+    }
+    setShowClearConfirm(true);
   };
 
   return (
@@ -298,8 +368,8 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
           <div className="relative">
             <button
               ref={clearButtonRef}
-              onClick={() => setShowClearConfirm(true)}
-              onMouseLeave={() => setShowClearConfirm(false)}
+              onClick={handleClearButtonClick}
+              onMouseEnter={handleClearButtonMouseEnter}
               className="px-3 py-1 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors duration-200 flex items-center gap-1"
               title="清空所有标签"
             >
@@ -307,7 +377,10 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
               清空
             </button>
             {showClearConfirm && (
-              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg p-3 z-50">
+              <div
+                id="clear-confirm-dialog"
+                className="absolute bottom-full right-0 mb-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg p-3 z-50"
+              >
                 <p className="text-sm text-gray-600 mb-2">确定要删除所有已选标签吗？</p>
                 <div className="flex justify-end space-x-2">
                   <button
@@ -332,23 +405,29 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-3">
+      <div className="flex flex-wrap gap-2 mb-3 relative min-h-[2.5rem]">
         {selectedTags.map((tag, index) => (
-          <React.Fragment key={tag.id}>
+          <div
+            key={tag.id}
+            className="relative"
+          >
             {index === dragOverIndex && (
-              <div className="w-1 h-6 bg-blue-500 rounded-full transition-all duration-200 ease-in-out" />
+              <div className="absolute inset-y-0 -left-2 w-1 bg-blue-500 rounded-full" />
             )}
             <div
               draggable
               onDragStart={(e) => handleDragStart(e, index)}
+              onDragEnd={handleDragEnd}
               onDragOver={(e) => handleDragOver(e, index)}
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, index)}
               onMouseDown={(e) => weightedMode && handleTagMouseDown(e, tag.id)}
               onContextMenu={(e) => e.preventDefault()}
-              className={`px-2 py-1 rounded-full text-sm flex items-center transition-colors duration-200 select-none ${
+              className={`px-2 py-1 rounded-full text-sm flex items-center transition-all duration-200 select-none ${
                 getWeightColor(tagWeights[tag.id] || 0)
-              } ${weightedMode ? 'cursor-pointer' : 'cursor-grab'} hover:cursor-grab active:cursor-grabbing`}
+              } ${weightedMode ? 'cursor-pointer' : 'cursor-grab'} hover:cursor-grab active:cursor-grabbing
+                ${draggedTagIndex === index ? 'opacity-50' : 'opacity-100'}
+              `}
             >
               <span>
                 {'{'.repeat(tagWeights[tag.id] || 0)}
@@ -363,21 +442,15 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
                       inputMode="numeric"
                       pattern="[0-9]*"
                       value={inputValues[tag.id] || '0'}
-                      onChange={(e) =>
-                        handleWeightInputChange(e, tag.id)
-                      }
+                      onChange={(e) => handleWeightInputChange(e, tag.id)}
                       onBlur={() => handleWeightInputBlur(tag.id)}
-                      onKeyDown={(e) =>
-                        handleWeightInputKeyDown(e, tag.id)
-                      }
+                      onKeyDown={(e) => handleWeightInputKeyDown(e, tag.id)}
                       className="w-12 h-6 text-xs text-center border rounded"
                       autoFocus
                     />
                   ) : (
                     <button
-                      onClick={(e) =>
-                        handleDirectWeightInput(e, tag.id)
-                      }
+                      onClick={(e) => handleDirectWeightInput(e, tag.id)}
                       className="p-1 text-gray-500 hover:text-gray-700 focus:outline-none"
                     >
                       <Hash size={18} />
@@ -391,11 +464,21 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
                 </button>
               </div>
             </div>
-          </React.Fragment>
+          </div>
         ))}
-        {dragOverIndex === selectedTags.length && (
-          <div className="w-1 h-6 bg-blue-500 rounded-full transition-all duration-200 ease-in-out" />
-        )}
+        {/* Drop zone for the end position */}
+        <div
+          ref={dropZoneRef}
+          className={`flex-grow min-w-[50px] h-8 rounded-md transition-all duration-200 ${
+            draggedTagIndex !== null ? 'bg-gray-100' : ''
+          }`}
+          onDragOver={handleDropZoneDragOver}
+          onDrop={(e) => handleDrop(e, selectedTags.length)}
+        >
+          {dragOverIndex === selectedTags.length && (
+            <div className="absolute inset-y-0 -left-1 w-1 bg-blue-500 rounded-full" />
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col mb-3">

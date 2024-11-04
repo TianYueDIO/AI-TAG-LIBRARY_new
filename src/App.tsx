@@ -189,7 +189,6 @@ const App: React.FC = () => {
       
       <div className="space-y-8">
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-4">已选标签</h2>
           <TagDisplay
             selectedTags={selectedTags}
             onRemove={(tag) => {

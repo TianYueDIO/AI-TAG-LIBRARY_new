@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Copy, Weight, Hash, Check, Trash2 } from 'lucide-react';
 import { Tag } from '../types';
 
+type TimeoutHandle = ReturnType<typeof setTimeout>;
+
 interface TagDisplayProps {
   selectedTags: Tag[];
   onRemove: (tag: Tag) => void;
@@ -12,7 +14,7 @@ interface TagDisplayProps {
   weightedMode: boolean;
   setWeightedMode: (mode: boolean) => void;
   tagWeights: Record<string, number>;
-  setTagWeights: (weights: Record<string, number>) => void;
+  setTagWeights: (value: Record<string, number> | ((prev: Record<string, number>) => Record<string, number>)) => void;
   matchedTags: Tag[];
   onSelectMatchedTag: (tag: Tag) => void;
   onReorderTags: (newOrder: Tag[]) => void;
@@ -43,12 +45,12 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
   const [showMatchedTags, setShowMatchedTags] = useState(false);
   const [draggedTagIndex, setDraggedTagIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const weightChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const longPressTimerRef = useRef<TimeoutHandle | null>(null);
+  const weightChangeTimeoutRef = useRef<TimeoutHandle | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const matchedTagsRef = useRef<HTMLDivElement>(null);
   const clearButtonRef = useRef<HTMLButtonElement>(null);
-  const clearConfirmTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const clearConfirmTimeoutRef = useRef<TimeoutHandle | null>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -381,7 +383,7 @@ const TagDisplay: React.FC<TagDisplayProps> = ({
                 id="clear-confirm-dialog"
                 className="absolute bottom-full right-0 mb-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg p-3 z-50"
               >
-                <p className="text-sm text-gray-600 mb-2">确定要删除所有已选标签吗？</p>
+                <p className="text-sm text-gray-600 mb-2">确定删除所有已选标签吗？</p>
                 <div className="flex justify-end space-x-2">
                   <button
                     onClick={() => setShowClearConfirm(false)}
